@@ -1,0 +1,6 @@
+{
+  "name": "Hoyo Pay",
+  "description": "Transparent referral and commission tracking app with cloud sync, biometric lock, multi-language support, transaction export, and payout tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

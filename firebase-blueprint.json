@@ -1,0 +1,130 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated Hoyo Pay user profile and referral settings",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "email": { "type": "string", "description": "Google account email" },
+        "phone": { "type": "string", "description": "Optional contact phone number" },
+        "referralCode": { "type": "string", "description": "Unique Hoyo Pay referral code" },
+        "referredByCode": { "type": "string", "description": "Referral code entered at onboarding/sign-in" },
+        "kycVerified": { "type": "boolean", "description": "Admin-verified profile badge" },
+        "biometricEnabled": { "type": "boolean", "description": "Whether biometric lock is enabled" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp" }
+      },
+      "required": ["userId", "displayName", "referralCode", "kycVerified", "biometricEnabled", "createdAt", "updatedAt"]
+    },
+    "PayoutMethod": {
+      "title": "PayoutMethod",
+      "description": "Private user UPI ID or Bank account payout destination",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "methodType": { "type": "string", "enum": ["UPI", "BANK"] },
+        "label": { "type": "string" },
+        "upiId": { "type": "string" },
+        "bankName": { "type": "string" },
+        "accountNumberLast4": { "type": "string" },
+        "ifscCode": { "type": "string" },
+        "accountHolderName": { "type": "string" },
+        "primaryMethod": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "methodType", "label", "accountHolderName", "primaryMethod", "createdAt", "updatedAt"]
+    },
+    "ReferralRecord": {
+      "title": "ReferralRecord",
+      "description": "Tracked referral invite and reward status",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "inviteeName": { "type": "string" },
+        "inviteeContact": { "type": "string" },
+        "referralCodeUsed": { "type": "string" },
+        "bonusPaise": { "type": "integer" },
+        "status": { "type": "string", "enum": ["INVITED", "JOINED", "REWARDED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "inviteeName", "referralCodeUsed", "bonusPaise", "status", "createdAt", "updatedAt"]
+    },
+    "CommissionTransaction": {
+      "title": "CommissionTransaction",
+      "description": "Commission, referral, or bonus ledger entry subject to verification",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "type": { "type": "string", "enum": ["COMMISSION", "REFERRAL", "BONUS"] },
+        "title": { "type": "string" },
+        "clientOrOrderRef": { "type": "string" },
+        "amountPaise": { "type": "integer" },
+        "commissionRateBps": { "type": "integer" },
+        "status": { "type": "string", "enum": ["PENDING", "VERIFIED", "REJECTED"] },
+        "notes": { "type": "string" },
+        "verifiedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "type", "title", "amountPaise", "commissionRateBps", "status", "createdAt", "updatedAt"]
+    },
+    "PayoutRequest": {
+      "title": "PayoutRequest",
+      "description": "User withdrawal/payout request linked to saved UPI or Bank account",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "amountPaise": { "type": "integer" },
+        "methodType": { "type": "string", "enum": ["UPI", "BANK"] },
+        "destinationDisplay": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "PROCESSING", "COMPLETED", "REJECTED"] },
+        "referenceUtr": { "type": "string" },
+        "adminNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "amountPaise", "methodType", "destinationDisplay", "status", "createdAt", "updatedAt"]
+    },
+    "AdminMarker": {
+      "title": "AdminMarker",
+      "description": "Read-only admin role marker document",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string" }
+      },
+      "required": ["role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles isolated to owner and verified admin"
+    },
+    "/users/{userId}/payoutMethods/{methodId}": {
+      "schema": { "$ref": "#/entities/PayoutMethod" },
+      "description": "Private user UPI and bank payout destinations"
+    },
+    "/users/{userId}/referrals/{referralId}": {
+      "schema": { "$ref": "#/entities/ReferralRecord" },
+      "description": "User referral invite tracking records"
+    },
+    "/transactions/{txId}": {
+      "schema": { "$ref": "#/entities/CommissionTransaction" },
+      "description": "Commission and referral ledger entries scoped by userId or accessible by admin"
+    },
+    "/payoutRequests/{payoutId}": {
+      "schema": { "$ref": "#/entities/PayoutRequest" },
+      "description": "Withdrawal and payout requests scoped by userId or accessible by admin"
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminMarker" },
+      "description": "Read-only admin privilege lookup"
+    }
+  }
+}

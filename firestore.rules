@@ -1,0 +1,252 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          'email_verified' in request.auth.token &&
+          request.auth.token.email_verified == true &&
+          'email' in request.auth.token &&
+          request.auth.token.email == 'vs1089236@gmail.com'
+        )
+      );
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 120)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20)) &&
+             data.referralCode is string && data.referralCode.size() >= 4 && data.referralCode.size() <= 20 &&
+             (!('referredByCode' in data) || (data.referredByCode is string && data.referredByCode.size() <= 20)) &&
+             data.kycVerified is bool &&
+             data.biometricEnabled is bool &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidPayoutMethod(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.methodType in ['UPI', 'BANK'] &&
+             data.label is string && data.label.size() >= 1 && data.label.size() <= 60 &&
+             data.accountHolderName is string && data.accountHolderName.size() >= 1 && data.accountHolderName.size() <= 80 &&
+             (!('upiId' in data) || (data.upiId is string && data.upiId.size() <= 80)) &&
+             (!('bankName' in data) || (data.bankName is string && data.bankName.size() <= 80)) &&
+             (!('accountNumberLast4' in data) || (data.accountNumberLast4 is string && data.accountNumberLast4.size() <= 8)) &&
+             (!('ifscCode' in data) || (data.ifscCode is string && data.ifscCode.size() <= 20)) &&
+             data.primaryMethod is bool &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidReferralRecord(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.inviteeName is string && data.inviteeName.size() >= 1 && data.inviteeName.size() <= 80 &&
+             (!('inviteeContact' in data) || (data.inviteeContact is string && data.inviteeContact.size() <= 60)) &&
+             data.referralCodeUsed is string && data.referralCodeUsed.size() >= 4 && data.referralCodeUsed.size() <= 20 &&
+             data.bonusPaise is int && data.bonusPaise >= 0 && data.bonusPaise <= 1000000 &&
+             data.status in ['INVITED', 'JOINED', 'REWARDED'] &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidTransaction(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 80 &&
+             data.type in ['COMMISSION', 'REFERRAL', 'BONUS'] &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             (!('clientOrOrderRef' in data) || (data.clientOrOrderRef is string && data.clientOrOrderRef.size() <= 80)) &&
+             data.amountPaise is int && data.amountPaise > 0 && data.amountPaise <= 100000000 &&
+             data.commissionRateBps is int && data.commissionRateBps >= 0 && data.commissionRateBps <= 10000 &&
+             data.status in ['PENDING', 'VERIFIED', 'REJECTED'] &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 300)) &&
+             (!('verifiedBy' in data) || (data.verifiedBy is string && data.verifiedBy.size() <= 120)) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidPayoutRequest(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 80 &&
+             data.amountPaise is int && data.amountPaise >= 10000 && data.amountPaise <= 50000000 &&
+             data.methodType in ['UPI', 'BANK'] &&
+             data.destinationDisplay is string && data.destinationDisplay.size() >= 3 && data.destinationDisplay.size() <= 100 &&
+             data.status in ['PENDING', 'PROCESSING', 'COMPLETED', 'REJECTED'] &&
+             (!('referenceUtr' in data) || (data.referenceUtr is string && data.referenceUtr.size() <= 80)) &&
+             (!('adminNote' in data) || (data.adminNote is string && data.adminNote.size() <= 200)) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().kycVerified == false &&
+                       incoming().createdAt <= request.time &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'referralCode', 'kycVerified', 'biometricEnabled', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'phone', 'referralCode', 'referredByCode', 'kycVerified', 'biometricEnabled', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().referralCode == existing().referralCode &&
+                       (
+                         isAdmin() ||
+                         (
+                           isOwner(userId) &&
+                           incoming().kycVerified == existing().kycVerified &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phone', 'referredByCode', 'biometricEnabled', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      match /payoutMethods/{methodId} {
+        allow get: if isOwner(userId) && isValidId(methodId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(methodId) &&
+                         incoming().userId == userId &&
+                         incoming().createdAt <= request.time &&
+                         incoming().keys().hasAll(['userId', 'methodType', 'label', 'accountHolderName', 'primaryMethod', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'methodType', 'label', 'upiId', 'bankName', 'accountNumberLast4', 'ifscCode', 'accountHolderName', 'primaryMethod', 'createdAt', 'updatedAt']) &&
+                         isValidPayoutMethod(incoming());
+
+        allow update: if isOwner(userId) &&
+                         isValidId(methodId) &&
+                         isValidPayoutMethod(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['methodType', 'label', 'upiId', 'bankName', 'accountNumberLast4', 'ifscCode', 'accountHolderName', 'primaryMethod', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(methodId);
+      }
+
+      match /referrals/{referralId} {
+        allow get: if isOwner(userId) && isValidId(referralId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(referralId) &&
+                         incoming().userId == userId &&
+                         incoming().createdAt <= request.time &&
+                         incoming().keys().hasAll(['userId', 'inviteeName', 'referralCodeUsed', 'bonusPaise', 'status', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'inviteeName', 'inviteeContact', 'referralCodeUsed', 'bonusPaise', 'status', 'createdAt', 'updatedAt']) &&
+                         isValidReferralRecord(incoming());
+
+        allow update: if isOwner(userId) &&
+                         isValidId(referralId) &&
+                         isValidReferralRecord(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         existing().status != 'REWARDED' &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['inviteeName', 'inviteeContact', 'status', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(referralId) && existing().status == 'INVITED';
+      }
+    }
+
+    match /transactions/{txId} {
+      allow get: if isSignedIn() && isValidId(txId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(txId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().createdAt <= request.time &&
+                       incoming().keys().hasAll(['userId', 'userName', 'type', 'title', 'amountPaise', 'commissionRateBps', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'userName', 'type', 'title', 'clientOrOrderRef', 'amountPaise', 'commissionRateBps', 'status', 'notes', 'verifiedBy', 'createdAt', 'updatedAt']) &&
+                       isValidTransaction(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(txId) &&
+                       isValidTransaction(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         isAdmin() ||
+                         (
+                           existing().userId == request.auth.uid &&
+                           existing().status == 'PENDING' &&
+                           incoming().status == 'PENDING' &&
+                           incoming().amountPaise == existing().amountPaise &&
+                           incoming().commissionRateBps == existing().commissionRateBps &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['title', 'clientOrOrderRef', 'notes', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isSignedIn() && isValidId(txId) && ((existing().userId == request.auth.uid && existing().status == 'PENDING') || isAdmin());
+    }
+
+    match /payoutRequests/{payoutId} {
+      allow get: if isSignedIn() && isValidId(payoutId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(payoutId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().createdAt <= request.time &&
+                       incoming().keys().hasAll(['userId', 'userName', 'amountPaise', 'methodType', 'destinationDisplay', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'userName', 'amountPaise', 'methodType', 'destinationDisplay', 'status', 'referenceUtr', 'adminNote', 'createdAt', 'updatedAt']) &&
+                       isValidPayoutRequest(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(payoutId) &&
+                       isValidPayoutRequest(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         isAdmin() ||
+                         (
+                           existing().userId == request.auth.uid &&
+                           existing().status == 'PENDING' &&
+                           incoming().status == 'PENDING' &&
+                           incoming().amountPaise == existing().amountPaise &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['destinationDisplay', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isSignedIn() && isValidId(payoutId) && ((existing().userId == request.auth.uid && existing().status == 'PENDING') || isAdmin());
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && request.auth.uid == adminUid;
+      allow list, write: if false;
+    }
+  }
+}
